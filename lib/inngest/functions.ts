@@ -3,8 +3,8 @@ import {NEWS_SUMMARY_EMAIL_PROMPT, PERSONALIZED_WELCOME_EMAIL_PROMPT} from "@/li
 import {sendNewsSummaryEmail, sendWelcomeEmail} from "@/lib/nodemailer";
 import {getAllUsersForNewsEmail} from "@/lib/actions/user.actions";
 import { getWatchlistSymbolsByEmail } from "@/lib/actions/watchlist.actions";
-import { getNews } from "@/lib/actions/finnhub.actions";
-import { getFormattedTodayDate } from "@/lib/utils";
+import { getNews, getEarnings } from "@/lib/actions/finnhub.actions";
+import { getFormattedTodayDate, getTodayDateRange } from "@/lib/utils";
 
 export const sendSignUpEmail = inngest.createFunction(
     { id: 'sign-up-email' },
@@ -118,3 +118,36 @@ export const sendDailyNewsSummary = inngest.createFunction(
         return { success: true, message: 'Daily news summary emails sent successfully' }
     }
 )
+
+export const checkEarningsAlerts = inngest.createFunction(
+    { id: 'check-earnings-alerts' },
+    [{ cron: '0 9 * * *' }], // 每天早上 9 点运行
+    async ({ step }) => {
+        // 1. 获取所有用户
+        const users = await step.run('get-users', getAllUsersForNewsEmail);
+        if (!users || users.length === 0) return;
+
+        // 2. 获取未来 3 天的财报日历
+        const earnings = await step.run('fetch-earnings', async () => {
+            const today = new Date();
+            const threeDaysLater = new Date(today);
+            threeDaysLater.setDate(today.getDate() + 3);
+            return await getEarnings(today.toISOString().split('T')[0], threeDaysLater.toISOString().split('T')[0]);
+        });
+
+        // 3. 为每个用户匹配自选股并发送通知 (这里简化了逻辑，实际需要匹配 symbol)
+        await step.run('process-user-alerts', async () => {
+            for (const user of users) {
+                const userSymbols = await getWatchlistSymbolsByEmail(user.email);
+                const upcomingEarnings = earnings.filter((e: any) => userSymbols.includes(e.symbol));
+                
+                if (upcomingEarnings.length > 0) {
+                    // 这里你需要调用发送邮件的函数，例如 sendEarningsEmail(...)
+                    console.log(`Sending earnings alert to ${user.email} for:`, upcomingEarnings.map((e:any) => e.symbol));
+                }
+            }
+        });
+
+        return { success: true, count: users.length };
+    }
+);

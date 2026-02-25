@@ -179,3 +179,14 @@ export const searchStocks = cache(async (query?: string): Promise<StockWithWatch
   }
 });
 
+export async function getEarnings(from: string, to: string): Promise<any[]> {
+  try {
+    const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+    const url = `${FINNHUB_BASE_URL}/calendar/earnings?from=${from}&to=${to}&token=${token}`;
+    const data = await fetchJSON<{ earningsCalendar: any[] }>(url, 3600);
+    return data.earningsCalendar || [];
+  } catch (err) {
+    console.error('getEarnings error:', err);
+    return [];
+  }
+}
